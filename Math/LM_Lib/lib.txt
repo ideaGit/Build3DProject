@@ -1,0 +1,1 @@
+libatlas.lib libcblas.lib libF77.lib libf77blas.lib liblapack.lib levmar.lib

@@ -8,6 +8,8 @@
 
 #include <QMainWindow>
 #include <QTextEdit>
+#include <QScrollArea>
+#include <QGridLayout>
 #include "AdapterWidget.h"
 
 class ToolBar;
@@ -42,6 +44,11 @@ public slots:
     void switchLayoutDirection();
     void setDockOptions();
 
+	//open pictures
+	void openFiles();
+	void deleteThread();
+	void showError(const QString filename);
+	void addThumbnail(QImage);
 public:
 
 public:
@@ -53,6 +60,13 @@ private:
     void setupToolBar();
     void setupMenuBar();
     void setupDockWidgets(const QMap<QString, QSize> &customSizeHints);
+
+	void createThumbnail(const QString& filename);
+	QWidget* previewwidget;
+	QWidget * main;
+	QScrollArea * pScroll;
+	QGridLayout* picGird;
+	int waitseconds;
 };
 
 

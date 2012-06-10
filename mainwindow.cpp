@@ -14,9 +14,12 @@
 #include "toolbar.h"
 #include "AdapterWidget.h"
 #include "BuildingData.h"
+#include "thumbnailthread.h"
 #include "textio.h"
 #include <QtGui>
-
+#include <QLayout>
+#include <QMessageBox>
+#include <QDockWidget>
 
 Q_DECLARE_METATYPE(QDockWidget::DockWidgetFeatures)
 
@@ -54,8 +57,14 @@ void MainWindow::setupToolBar()
 	QAction* openAction = new QAction(QIcon("./res/open.png"), tr("&Open"), this);
 	connect(openAction, SIGNAL(triggered()), SLOT(loadmodel()));
 
-	toolBar1->addAction(openAction);
+	QAction *openPics = new QAction(tr("&Pics"), this);
+	openPics->setShortcut(QKeySequence::Open);
+	openPics->setStatusTip(tr("Open Pictures!"));
+	openPics->setIcon(QIcon("./res/open_picture.png"));
+	connect(openPics , SIGNAL(triggered()) ,  this , SLOT (openFiles()));
 
+	toolBar1->addAction(openAction);
+	toolBar1->addAction(openPics);
     //for (int i = 0; i < 3; ++i) {
     //    ToolBar *tb = new ToolBar(QString::fromLatin1("Tool Bar %1").arg(i + 1), this);
     //    toolBars.append(tb);
@@ -201,11 +210,11 @@ void MainWindow::setupDockWidgets(const QMap<QString, QSize> &customSizeHints)
 #else
         { "Black", Qt::Drawer, Qt::LeftDockWidgetArea },
 #endif
-        { "White", 0, Qt::RightDockWidgetArea },
-  //      { "Red", 0, Qt::TopDockWidgetArea },
-		//{ "Green", 0, Qt::TopDockWidgetArea },
+       /* { "White", 0, Qt::RightDockWidgetArea },
+       { "Red", 0, Qt::TopDockWidgetArea },
+		{ "Green", 0, Qt::TopDockWidgetArea },
 		{ "Yellow", 0, Qt::BottomDockWidgetArea },
-        { "Blue", 0, Qt::BottomDockWidgetArea }
+        { "Blue", 0, Qt::BottomDockWidgetArea }*/
     };
     const int setCount = sizeof(sets) / sizeof(Set);
 
@@ -235,9 +244,43 @@ void MainWindow::setupDockWidgets(const QMap<QString, QSize> &customSizeHints)
         if (customSizeHints.contains(name))
             swatch->setCustomSizeHint(customSizeHints.value(name));
 
+			if(qstrcmp(sets[i].name, "Black") == 0)
+			{
+				pScroll = new QScrollArea(swatch);	
+				swatch->setWidget(pScroll);
+				
+				previewwidget = new QWidget(pScroll);
+				pScroll->setWidget(previewwidget);
+
+				previewwidget->setAutoFillBackground(true);
+				previewwidget->setFixedSize(200, 200);
+				picGird = new QGridLayout(previewwidget);
+				previewwidget->setLayout(picGird);
+			}
+
         addDockWidget(sets[i].area, swatch);
         dockWidgetMenu->addMenu(swatch->menu);
     }
+ 
+	////ColorSwatch* swatch = new ColorSwatch(tr(sets[0].name), this, Qt::WindowFlags(sets[0].flags));
+	//QDockWidget *blackDockWidget = new QDockWidget(tr("PicturesViewer"));
+	//blackDockWidget->setAllowedAreas(Qt::LeftDockWidgetArea | Qt::RightDockWidgetArea); 
+	////blackDockWidget->setFeatures();
+ //     /*  QString name = QString::fromLatin1(sets[0].name);
+ //       if (customSizeHints.contains(name))
+ //           swatch->setCustomSizeHint(customSizeHints.value(name));*/
+	//	
+	//	pScroll = new QScrollArea(blackDockWidget);	
+	//	blackDockWidget->setWidget(pScroll);
+	//	
+	//	previewwidget = new QWidget(pScroll);
+	//	pScroll->setWidget(previewwidget);
+
+	//	previewwidget->setAutoFillBackground(true);
+	//	picGird = new QGridLayout(previewwidget);
+	//	previewwidget->setLayout(picGird);
+ //       addDockWidget(sets[0].area, blackDockWidget);
+		
 }
 
 void MainWindow::setCorner(int id)
@@ -320,4 +363,65 @@ void MainWindow::loadmodel()
 	_glWidget->AddModelNode(mt.get());
 	_glWidget->ResetCameraPara();
 	_glWidget->update();
+}
+
+//open pictures 
+void MainWindow::openFiles()
+{
+	waitseconds = 1;//reset
+
+	QStringList list = QFileDialog::getOpenFileNames(this, "Open one or more pictures", "", "JPG(*.jpg) ..PNG( *.png) ..BMP( *.bmp) ..ALL files(*.*)");
+	if( list.count() == 0)
+	{
+		return;
+	}
+
+	//open files one by one, and create thread to create thumbnail for each file
+	QStringList::Iterator it = list.begin();
+	while(it != list.end()) 
+	{
+     		createThumbnail(*it);
+     		++it;
+ 	}
+}
+
+void MainWindow::createThumbnail(const QString& filename)
+{
+	qDebug() << filename;
+	QThread* thread = new ThumbnailThread(filename, 10 - waitseconds);
+	waitseconds ++;
+	connect(thread, SIGNAL(thumbnailFinished(QImage)), this, SLOT(addThumbnail(QImage)));
+	connect(thread, SIGNAL(thumbnailFailed(const QString)), this, SLOT(showError(const QString)));
+	connect(thread, SIGNAL(finished()), this, SLOT(deleteThread()));
+	thread->start();
+}
+
+void MainWindow::deleteThread()
+{
+	QObject* obj = sender();
+	ThumbnailThread * th = qobject_cast<ThumbnailThread*>(obj);
+	qDebug() << "delete thread..." << th->waitseconds();
+	obj->deleteLater();
+}
+
+void MainWindow::addThumbnail(QImage smallpm)
+{
+	static int i = 0;
+	static int j = 0;
+  
+	qWarning() << "thumbnail create successfully..." ;
+	//qWarning() << "Small PM:" << smallpm << smallpm.size();
+	QLabel* label = new QLabel;
+	label->setPixmap(QPixmap::fromImage(smallpm));
+	picGird->addWidget(label, j, i);
+	label->show();
+	qWarning() << "Label:" <<label << label->isVisible();
+	j++;
+	if( j > previewwidget->height()/ smallpm.height())
+		previewwidget->setFixedHeight(  previewwidget->height() + 20 + smallpm.height());
+}
+
+void MainWindow::showError(const QString filename)
+{
+	QMessageBox::information(this, "Error!", filename+" is not a valid picture file.");
 }
